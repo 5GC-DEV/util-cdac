@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/5GC-DEV/util/logger"
+	"github.com/5GC-DEV/util-cdac/logger"
 )
 
 type (

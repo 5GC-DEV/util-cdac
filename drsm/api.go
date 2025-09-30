@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/5GC-DEV/util/logger"
+	"github.com/5GC-DEV/util-cdac/logger"
 )
 
 type DbInfo struct {

@@ -1,4 +1,4 @@
-module github.com/5GC-DEV/util
+module github.com/5GC-DEV/util-cdac
 
 go 1.24.0
 
