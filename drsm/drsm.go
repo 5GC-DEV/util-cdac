@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/5GC-DEV/util/logger"
-	MongoDBLibrary "github.com/5GC-DEV/util/mongoapi"
+	"github.com/5GC-DEV/util-cdac/logger"
+	MongoDBLibrary "github.com/5GC-DEV/util-cdac/mongoapi"
 	ipam "github.com/thakurajayL/go-ipam"
 	"go.mongodb.org/mongo-driver/bson"
 )

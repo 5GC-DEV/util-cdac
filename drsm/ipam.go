@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/5GC-DEV/util/logger"
+	"github.com/5GC-DEV/util-cdac/logger"
 	ipam "github.com/thakurajayL/go-ipam"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
