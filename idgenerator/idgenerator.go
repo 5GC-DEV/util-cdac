@@ -41,22 +41,32 @@ func (idGenerator *IDGenerator) Allocate() (int64, error) {
 	idGenerator.lock.Lock()
 	defer idGenerator.lock.Unlock()
 
-	offsetBegin := idGenerator.offset
-	for {
-		if _, ok := idGenerator.usedMap[idGenerator.offset]; ok {
-			idGenerator.updateOffset()
+	// try twice: first from current offset, then from start
+	for attempt := 0; attempt < 2; attempt++ {
+		offsetBegin := idGenerator.offset
 
-			if idGenerator.offset == offsetBegin {
-				return 0, errors.New("no available value range to allocate id")
+		for {
+			if _, ok := idGenerator.usedMap[idGenerator.offset]; ok {
+				idGenerator.updateOffset()
+
+				if idGenerator.offset == offsetBegin {
+					break // full loop done, no free slot in this attempt
+				}
+			} else {
+				// free slot found → allocate
+				idGenerator.usedMap[idGenerator.offset] = true
+				id := idGenerator.offset + idGenerator.minValue
+				idGenerator.updateOffset()
+				return id, nil
 			}
-		} else {
-			break
 		}
+
+		// after first attempt, reset offset to 0 (start of range)
+		idGenerator.offset = 0
 	}
-	idGenerator.usedMap[idGenerator.offset] = true
-	id := idGenerator.offset + idGenerator.minValue
-	idGenerator.updateOffset()
-	return id, nil
+
+	// no free slot found after two passes
+	return 0, errors.New("no available value range to allocate id")
 }
 
 // param:
