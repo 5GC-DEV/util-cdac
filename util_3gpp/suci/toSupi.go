@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/omec-project/util/logger"
+	"github.com/5GC-DEV/util/logger"
 	"golang.org/x/crypto/curve25519"
 )
 

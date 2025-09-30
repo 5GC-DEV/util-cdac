@@ -1,4 +1,4 @@
-module github.com/omec-project/util
+module github.com/5GC-DEV/util
 
 go 1.24.0
 
