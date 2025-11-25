@@ -10,13 +10,15 @@ package http2_util
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
-	"time"
+
+	// "time"
 
 	"github.com/pkg/errors"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
+	// "golang.org/x/net/http2"
+	// "golang.org/x/net/http2/h2c"
 )
 
 // NewServer returns a server instance with HTTP/2.0 and HTTP/2.0 cleartext support
@@ -49,35 +51,27 @@ import (
 	return
 } */
 
-func NewServer(bindAddr string, preMasterSecretLogPath string, handler http.Handler) (*http.Server, error) {
+func NewServer(bindAddr, keyLogPath, certPath, keyPath string, handler http.Handler) (*http.Server, error) {
 	if handler == nil {
-		return nil, errors.New("server needs handler to handle request")
+		return nil, errors.New("server needs handler")
 	}
-
-	h2Server := &http2.Server{
-		IdleTimeout: 1 * time.Millisecond,
-	}
-
-	server := &http.Server{
-		Addr:    bindAddr,
-		Handler: h2c.NewHandler(handler, h2Server),
-	}
-
-	if preMasterSecretLogPath != "" {
-		preMasterSecretFile, err := os.OpenFile(
-			preMasterSecretLogPath,
-			os.O_WRONLY|os.O_CREATE|os.O_APPEND, // <-- FIXED
-			0o600,
-		)
+	// Open SSL key log writer
+	var keyLogWriter io.Writer
+	if keyLogPath != "" {
+		f, err := os.OpenFile(keyLogPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 		if err != nil {
-			return server, fmt.Errorf("create pre-master-secret log [%s] fail: %s",
-				preMasterSecretLogPath, err)
+			return nil, fmt.Errorf("open keylog file failed: %v", err)
 		}
-
-		server.TLSConfig = &tls.Config{
-			KeyLogWriter: preMasterSecretFile,
-		}
+		keyLogWriter = f
 	}
-
-	return server, nil
+	tlsCfg := &tls.Config{
+		NextProtos:   []string{"h2"}, // required for HTTP/2 TLS
+		KeyLogWriter: keyLogWriter,   // Wireshark TLS key logs
+	}
+	srv := &http.Server{
+		Addr:      bindAddr,
+		Handler:   handler,
+		TLSConfig: tlsCfg,
+	}
+	return srv, nil
 }
