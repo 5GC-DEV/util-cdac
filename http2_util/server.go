@@ -55,7 +55,8 @@ func NewServer(bindAddr, keyLogPath, certPath, keyPath string, handler http.Hand
 	if handler == nil {
 		return nil, errors.New("server needs handler")
 	}
-	// Open SSL key log writer
+
+	// --- TLS KEY LOG FILE ---
 	var keyLogWriter io.Writer
 	if keyLogPath != "" {
 		f, err := os.OpenFile(keyLogPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
@@ -64,14 +65,27 @@ func NewServer(bindAddr, keyLogPath, certPath, keyPath string, handler http.Hand
 		}
 		keyLogWriter = f
 	}
-	tlsCfg := &tls.Config{
-		NextProtos:   []string{"h2"}, // required for HTTP/2 TLS
-		KeyLogWriter: keyLogWriter,   // Wireshark TLS key logs
+
+	// --- LOAD CERTIFICATE ---
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("load cert failed: %v", err)
 	}
+
+	// --- TLS CONFIG ---
+	tlsCfg := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		KeyLogWriter: keyLogWriter,
+		NextProtos:   []string{"h2"}, // HTTP/2 ALPN
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	// --- HTTP SERVER ---
 	srv := &http.Server{
 		Addr:      bindAddr,
 		Handler:   handler,
 		TLSConfig: tlsCfg,
 	}
+
 	return srv, nil
 }
