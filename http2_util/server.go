@@ -10,7 +10,6 @@ package http2_util
 import (
 	"crypto/tls"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 
@@ -24,18 +23,22 @@ import (
 // NewServer returns a server instance with HTTP/2.0 and HTTP/2.0 cleartext support
 // If this function cannot open or create the secret log file,
 // **it still returns server instance** but without the secret log and error indication
-/*func NewServer(bindAddr string, preMasterSecretLogPath string, handler http.Handler) (server *http.Server, err error) {
+func NewServer(bindAddr string, preMasterSecretLogPath string, handler http.Handler) (server *http.Server, err error) {
 	if handler == nil {
 		return nil, errors.New("server needs handler to handle request")
 	}
 
-	h2Server := &http2.Server{
+	/*h2Server := &http2.Server{
 		// TODO: extends the idle time after re-use openapi client
 		IdleTimeout: 1 * time.Millisecond,
-	}
-	server = &http.Server{
+	}*/
+	/*server = &http.Server{
 		Addr:    bindAddr,
 		Handler: h2c.NewHandler(handler, h2Server),
+	}*/
+	server = &http.Server{
+		Addr:    bindAddr,
+		Handler: handler, // normal handler
 	}
 
 	if preMasterSecretLogPath != "" {
@@ -49,9 +52,9 @@ import (
 	}
 
 	return
-} */
+}
 
-func NewServer(bindAddr, keyLogPath, certPath, keyPath string, handler http.Handler) (*http.Server, error) {
+/*func NewServer(bindAddr, keyLogPath, certPath, keyPath string, handler http.Handler) (*http.Server, error) {
 	if handler == nil {
 		return nil, errors.New("server needs handler")
 	}
@@ -88,4 +91,4 @@ func NewServer(bindAddr, keyLogPath, certPath, keyPath string, handler http.Hand
 	}
 
 	return srv, nil
-}
+} */
