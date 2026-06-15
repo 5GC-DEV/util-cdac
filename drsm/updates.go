@@ -137,9 +137,7 @@ func iterateChangeStream(d *Drsm, routineCtx context.Context, stream *mongo.Chan
 			switch full.Type {
 			case "keepalive":
 				// logger.DrsmLog.Debugf("insert keepalive document")
-				d.podMapMutex.RLock()
 				pod, found := d.podMap[full.PodId]
-				d.podMapMutex.RUnlock()
 				if !found {
 					d.addPod(full)
 				} else {
@@ -157,31 +155,16 @@ func iterateChangeStream(d *Drsm, routineCtx context.Context, stream *mongo.Chan
 				// looks like chunk owner getting change
 				owner := s.Update.UpdFields.PodId
 				c := getChunkIdFromDocId(s.DId.Id)
-				d.globalChunkTblMutex.RLock()
-				cp, found := d.globalChunkTbl[c]
-				d.globalChunkTblMutex.RUnlock()
-				if !found || cp == nil {
-					logger.DrsmLog.Warnf("chunk %d not found in globalChunkTbl", c)
-					continue
-				}
+				d.globalChunkTblMutex.Lock()
+				cp := d.globalChunkTbl[c]
+				d.globalChunkTblMutex.Unlock()
 				// TODO update IP address as well.
 				cp.Owner.PodName = owner
 				cp.Owner.PodIp = s.Update.UpdFields.PodIp
 				cp.Owner.PodInstance = s.Update.UpdFields.PodInstance
-				d.podMapMutex.RLock()
-				podD, found := d.podMap[owner]
-				d.podMapMutex.RUnlock()
-
-				if !found || podD == nil {
-					logger.DrsmLog.Warnf("pod %s not found", owner)
-					return
-				}
-				podD.mu.Lock()
+				podD := d.podMap[owner]
 				podD.podChunks[c] = cp // add chunk to pod
-				podD.mu.Unlock()
-				podD.mu.RLock()
 				logger.DrsmLog.Infof("stream(Update): pod to chunk map %v", podD.podChunks)
-				podD.mu.RUnlock()
 			}
 		case "delete":
 			logger.DrsmLog.Debugln("delete operations")
@@ -261,9 +244,7 @@ func (d *Drsm) checkAllChunks() {
 }
 
 func (d *Drsm) addChunk(full *FullStream) {
-	d.podMapMutex.RLock()
 	pod, found := d.podMap[full.PodId]
-	d.podMapMutex.RUnlock()
 	if !found {
 		pod = d.addPod(full)
 	}
@@ -277,9 +258,7 @@ func (d *Drsm) addChunk(full *FullStream) {
 	c := &chunk{Id: cid, Owner: o}
 	c.resourceValidCb = d.resourceValidCb
 
-	pod.mu.Lock()
 	pod.podChunks[cid] = c
-	pod.mu.Unlock()
 
 	d.globalChunkTblMutex.Lock()
 	d.globalChunkTbl[cid] = c

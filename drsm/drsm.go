@@ -34,20 +34,11 @@ type chunk struct {
 	resourceValidCb func(int32) bool
 }
 
-/*type podData struct {
+type podData struct {
 	PodId         PodId            `bson:"podId,omitempty" json:"podId,omitempty"`
 	Timestamp     time.Time        `bson:"time,omitempty" json:"time,omitempty"`
 	PrevTimestamp time.Time        `bson:"-" json:"-"`
 	podChunks     map[int32]*chunk `bson:"-" json:"-"` // chunkId to Chunk
-}*/
-
-type podData struct {
-	PodId         PodId
-	Timestamp     time.Time
-	PrevTimestamp time.Time
-
-	mu        sync.RWMutex
-	podChunks map[int32]*chunk
 }
 
 type Drsm struct {
@@ -66,8 +57,7 @@ type Drsm struct {
 	ipModule            ipam.Ipamer
 	prefix              map[string]*ipam.Prefix
 	mongo               *MongoDBLibrary.MongoClient
-	podMapMutex         sync.RWMutex
-	globalChunkTblMutex sync.RWMutex
+	globalChunkTblMutex sync.Mutex
 }
 
 func (d *Drsm) DeletePod(podInstance string) {
@@ -76,7 +66,7 @@ func (d *Drsm) DeletePod(podInstance string) {
 	logger.DrsmLog.Infoln("deleted PodId from DB:", podInstance)
 }
 
-/*func (d *Drsm) ConstuctDrsm(opt *Options) {
+func (d *Drsm) ConstuctDrsm(opt *Options) {
 	if opt != nil {
 		d.mode = opt.Mode
 		logger.DrsmLog.Debugln("drsm mode set to", d.mode)
@@ -95,46 +85,6 @@ func (d *Drsm) DeletePod(podInstance string) {
 	d.podDown = make(chan string, 10)
 	d.scanChunks = make(map[int32]*chunk)
 	d.globalChunkTblMutex = sync.Mutex{}
-	d.initIpam(opt)
-
-	// connect to DB
-	d.mongo, _ = MongoDBLibrary.NewMongoClient(d.db.Url, d.db.Name)
-	logger.DrsmLog.Debugln("mongoClient is created", d.db.Name)
-
-	go d.handleDbUpdates()
-	go d.punchLiveness()
-	go d.podDownDetected()
-	go d.checkAllChunks()
-}*/
-
-func (d *Drsm) ConstuctDrsm(opt *Options) {
-	if opt != nil {
-		d.mode = opt.Mode
-		logger.DrsmLog.Debugln("drsm mode set to", d.mode)
-
-		if opt.ResIdSize > 0 {
-			d.resIdSize = opt.ResIdSize
-		} else {
-			d.resIdSize = 24
-		}
-
-		d.resourceValidCb = opt.ResourceValidCb
-	}
-
-	d.chunkIdRange = 1 << (d.resIdSize - 10)
-	logger.DrsmLog.Debugf("chunkId in the range of 0 to %v", d.chunkIdRange)
-
-	d.localChunkTbl = make(map[int32]*chunk)
-	d.globalChunkTbl = make(map[int32]*chunk)
-	d.podMap = make(map[string]*podData)
-	d.scanChunks = make(map[int32]*chunk)
-
-	d.podDown = make(chan string, 10)
-
-	// No explicit initialization required, but fine to keep
-	d.globalChunkTblMutex = sync.RWMutex{}
-	d.podMapMutex = sync.RWMutex{}
-
 	d.initIpam(opt)
 
 	// connect to DB
