@@ -65,8 +65,8 @@ func InitDRSM(sharedPoolName string, myid PodId, db DbInfo, opt *Options) (DrsmI
 }
 
 func (d *Drsm) AllocateInt32ID() (int32, error) {
-	mutex.Lock()
-	defer mutex.Unlock()
+	// mutex.Lock()
+	// defer mutex.Unlock()
 	if d.mode == ResourceDemux {
 		logger.DrsmLog.Errorln("demux mode can not allocate Resource index")
 		err := fmt.Errorf("demux mode does not allow Resource Id allocation")
