@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/5GC-DEV/util-cdac/logger"
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,6 +19,15 @@ func IdempotencyMiddleware() gin.HandlerFunc {
 		}
 
 		requestInfo := c.GetHeader("3gpp-Sbi-Request-Info")
+
+		if requestInfo != "" {
+			logger.UtilLog.Infof(
+				"Received idempotency key=%s method=%s path=%s",
+				requestInfo,
+				c.Request.Method,
+				c.Request.URL.Path,
+			)
+		}
 
 		if requestInfo == "" {
 			c.Next()
