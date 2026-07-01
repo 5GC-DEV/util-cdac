@@ -10,24 +10,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-/*func (d *Drsm) podDownDetected() {
-	logger.DrsmLog.Infoln("started Pod Down goroutine")
-	for p := range d.podDown {
-		logger.DrsmLog.Infof("pod Down detected %v", p)
-		// Given Pod find out current Chunks owned by this POD
-		pd := d.podMap[p]
-		for k := range pd.podChunks {
-			d.globalChunkTblMutex.Lock()
-			c, found := d.globalChunkTbl[k]
-			d.globalChunkTblMutex.Unlock()
-			logger.DrsmLog.Debugf("found: %v chunk: %v", found, c)
-			if found {
-				go c.claimChunk(d, pd.PodId.PodName)
-			}
-		}
-	}
-}*/
-
 func (d *Drsm) podDownDetected() {
 	logger.DrsmLog.Infoln("started Pod Down goroutine")
 
