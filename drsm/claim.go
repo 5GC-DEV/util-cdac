@@ -12,16 +12,38 @@ import (
 
 func (d *Drsm) podDownDetected() {
 	logger.DrsmLog.Infoln("started Pod Down goroutine")
+
 	for p := range d.podDown {
 		logger.DrsmLog.Infof("pod Down detected %v", p)
-		// Given Pod find out current Chunks owned by this POD
-		pd := d.podMap[p]
+
+		// Safely get pod entry
+		d.podMapMutex.RLock()
+		pd, found := d.podMap[p]
+		d.podMapMutex.RUnlock()
+
+		if !found || pd == nil {
+			logger.DrsmLog.Warnf("pod %s not found in podMap", p)
+			continue
+		}
+
+		// Copy chunk IDs while holding read lock
+		pd.mu.RLock()
+		chunkIDs := make([]int32, 0, len(pd.podChunks))
 		for k := range pd.podChunks {
-			d.globalChunkTblMutex.Lock()
+			chunkIDs = append(chunkIDs, k)
+		}
+		pd.mu.RUnlock()
+
+		// Process chunks without holding pod lock
+		for _, k := range chunkIDs {
+
+			d.globalChunkTblMutex.RLock()
 			c, found := d.globalChunkTbl[k]
-			d.globalChunkTblMutex.Unlock()
+			d.globalChunkTblMutex.RUnlock()
+
 			logger.DrsmLog.Debugf("found: %v chunk: %v", found, c)
-			if found {
+
+			if found && c != nil {
 				go c.claimChunk(d, pd.PodId.PodName)
 			}
 		}
