@@ -59,8 +59,7 @@ type Drsm struct {
 	ipModule            ipam.Ipamer
 	prefix              map[string]*ipam.Prefix
 	mongo               *MongoDBLibrary.MongoClient
-	podMapMutex         sync.RWMutex
-	globalChunkTblMutex sync.RWMutex
+	globalChunkTblMutex sync.Mutex
 }
 
 func (d *Drsm) DeletePod(podInstance string) {
@@ -73,13 +72,11 @@ func (d *Drsm) ConstuctDrsm(opt *Options) {
 	if opt != nil {
 		d.mode = opt.Mode
 		logger.DrsmLog.Debugln("drsm mode set to", d.mode)
-
 		if opt.ResIdSize > 0 {
 			d.resIdSize = opt.ResIdSize
 		} else {
 			d.resIdSize = 24
 		}
-
 		d.resourceValidCb = opt.ResourceValidCb
 	}
 
