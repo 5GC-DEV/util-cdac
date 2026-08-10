@@ -1,5 +1,5 @@
+// Copyright (C) 2026 Intel Corporation
 // Copyright 2019 Communication Service/Software Laboratory, National Chiao Tung University (free5gc.org)
-//
 // SPDX-License-Identifier: Apache-2.0
 
 //go:build !debug
@@ -13,27 +13,30 @@ import (
 	"net/http"
 	"os"
 	"time"
-
-	"github.com/pkg/errors"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
-// NewServer returns a server instance with HTTP/2.0 and HTTP/2.0 cleartext support
-// If this function cannot open or create the secret log file,
-// **it still returns server instance** but without the secret log and error indication
+// NewServer centralizes the default HTTP server setup used by the control-plane services.
+// In non-debug builds it enables HTTP/1 and unencrypted HTTP/2 on the same listener,
+// keeps the shared idle-timeout behavior, and optionally configures TLS key logging.
+//
+// If preMasterSecretLogPath cannot be opened, NewServer still returns a usable server
+// without KeyLogWriter configured, along with the corresponding error so the caller can
+// decide whether to continue.
 func NewServer(bindAddr string, preMasterSecretLogPath string, handler http.Handler) (server *http.Server, err error) {
 	if handler == nil {
-		return nil, errors.New("server needs handler to handle request")
+		return nil, fmt.Errorf("server needs handler to handle request")
 	}
 
-	h2Server := &http2.Server{
-		// TODO: extends the idle time after re-use openapi client
-		IdleTimeout: 1 * time.Millisecond,
-	}
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetHTTP2(true)
+	protocols.SetUnencryptedHTTP2(true)
+
 	server = &http.Server{
-		Addr:    bindAddr,
-		Handler: h2c.NewHandler(handler, h2Server),
+		Addr:        bindAddr,
+		Handler:     handler,
+		Protocols:   protocols,
+		IdleTimeout: 60 * time.Second,
 	}
 
 	if preMasterSecretLogPath != "" {

@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/5GC-DEV/util-cdac/logger"
-	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 func (c *chunk) GetOwner() *PodId {

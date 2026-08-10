@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/5GC-DEV/util-cdac/logger"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 type UpdatedFields struct {
@@ -104,9 +104,16 @@ func (d *Drsm) handleDbUpdates() {
 			time.Sleep(5000 * time.Millisecond)
 			continue
 		}
-		routineCtx, _ := context.WithCancel(context.Background())
+		routineCtx, cancel := context.WithCancel(context.Background())
 		// run routine to get messages from stream
 		iterateChangeStream(d, routineCtx, updateStream)
+		cancel()
+	}
+}
+
+func (d *Drsm) ensurePodChunksInitialized(podD *podData) {
+	if podD.podChunks == nil {
+		podD.podChunks = make(map[int32]*chunk)
 	}
 }
 
@@ -124,11 +131,15 @@ func iterateChangeStream(d *Drsm, routineCtx context.Context, stream *mongo.Chan
 	for stream.Next(routineCtx) {
 		var data bson.M
 		if err := stream.Decode(&data); err != nil {
-			panic(err)
+			logger.DrsmLog.Errorf("failed to decode stream data: %v", err)
+			continue
 		}
 		var s streamDoc
 		bsonBytes, _ := bson.Marshal(data)
-		bson.Unmarshal(bsonBytes, &s)
+		if err := bson.Unmarshal(bsonBytes, &s); err != nil {
+			logger.DrsmLog.Errorf("failed to unmarshal stream data: %v", err)
+			continue
+		}
 		// logger.DrsmLog.Debugf("iterate stream : ", data)
 		// logger.DrsmLog.Debugf("\ndecoded stream bson %+v \n", s)
 		switch s.OpType {
@@ -154,15 +165,32 @@ func iterateChangeStream(d *Drsm, routineCtx context.Context, stream *mongo.Chan
 				// update on chunkId..
 				// looks like chunk owner getting change
 				owner := s.Update.UpdFields.PodId
+				if owner == "" {
+					logger.DrsmLog.Warnf("stream(Update): missing owner in update for doc %s, operation: %+v", s.DId.Id, s.Update)
+					continue
+				}
 				c := getChunkIdFromDocId(s.DId.Id)
 				d.globalChunkTblMutex.Lock()
-				cp := d.globalChunkTbl[c]
+				cp, found := d.globalChunkTbl[c]
 				d.globalChunkTblMutex.Unlock()
+				if !found {
+					logger.DrsmLog.Warnf("stream(Update): chunk %d not found in global table for owner %s - will be corrected by periodic resync", c, owner)
+					// Without a chunk reference there is nothing to update; skip to avoid panic.
+					// The periodic checkAllChunks() will resync state from MongoDB.
+					continue
+				}
 				// TODO update IP address as well.
 				cp.Owner.PodName = owner
 				cp.Owner.PodIp = s.Update.UpdFields.PodIp
 				cp.Owner.PodInstance = s.Update.UpdFields.PodInstance
-				podD := d.podMap[owner]
+				podD, found := d.podMap[owner]
+				if !found {
+					logger.DrsmLog.Warnf("stream(Update): pod %s not in local map for chunk %d update - will be corrected when keepalive arrives or during periodic resync", owner, c)
+					// Wait for proper pod initialization via keepalive. Eventual consistency will be maintained by periodic resync and proper keepalive events.
+					continue
+				}
+				// Defensive: should never happen if addPod() was called, but prevents panic
+				d.ensurePodChunksInitialized(podD)
 				podD.podChunks[c] = cp // add chunk to pod
 				logger.DrsmLog.Infof("stream(Update): pod to chunk map %v", podD.podChunks)
 			}
@@ -202,12 +230,12 @@ func (d *Drsm) punchLiveness() {
 		timein := time.Now().Local().Add(20 * time.Second)
 
 		update := bson.D{
-			{"_id", d.clientId.PodName},
-			{"type", "keepalive"},
-			{"podIp", d.clientId.PodIp},
-			{"podId", d.clientId.PodName},
-			{"podInstance", d.clientId.PodInstance},
-			{"expireAt", timein},
+			{Key: "_id", Value: d.clientId.PodName},
+			{Key: "type", Value: "keepalive"},
+			{Key: "podIp", Value: d.clientId.PodIp},
+			{Key: "podId", Value: d.clientId.PodName},
+			{Key: "podInstance", Value: d.clientId.PodInstance},
+			{Key: "expireAt", Value: timein},
 		}
 
 		_, err := d.mongo.PutOneCustomDataStructure(d.sharedPoolName, filter, update)
@@ -270,7 +298,7 @@ func (d *Drsm) addChunk(full *FullStream) {
 func (d *Drsm) addPod(full *FullStream) *podData {
 	podI := PodId{PodName: full.PodId, PodInstance: full.PodInstance, PodIp: full.PodIp}
 	pod := &podData{PodId: podI}
-	pod.podChunks = make(map[int32]*chunk)
+	d.ensurePodChunksInitialized(pod)
 	d.podMap[full.PodId] = pod
 	logger.DrsmLog.Infof("keepalive insert d.podMaps %v", d.podMap)
 	return pod

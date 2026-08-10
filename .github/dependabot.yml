@@ -2,29 +2,27 @@
 # Copyright 2023 Canonical Ltd.
 # Copyright 2024 Intel Corporation
 
+# Timeline for each ecosystem is intentionally staggered to spread
+# Dependabot PRs over the week.
 version: 2
 updates:
-
-  - package-ecosystem: "docker"
-    directory: "/mongoapi/dbtestapp/"
-    schedule:
-      interval: "weekly"
-      day: "wednesday"
-      time: "21:00"
-      timezone: "America/Los_Angeles"
 
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "wednesday"
+      day: "thursday"
       time: "21:00"
       timezone: "America/Los_Angeles"
 
-  - package-ecosystem: "gomod"
-    directory: "/mongoapi/dbtestapp"
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
       interval: "weekly"
-      day: "wednesday"
+      day: "tuesday"
       time: "21:00"
       timezone: "America/Los_Angeles"
+    groups:
+      actions-deps:
+        patterns:
+          - "*"
