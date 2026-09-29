@@ -35,10 +35,12 @@ type chunk struct {
 }
 
 type podData struct {
-	PodId         PodId            `bson:"podId,omitempty" json:"podId,omitempty"`
-	Timestamp     time.Time        `bson:"time,omitempty" json:"time,omitempty"`
-	PrevTimestamp time.Time        `bson:"-" json:"-"`
-	podChunks     map[int32]*chunk `bson:"-" json:"-"` // chunkId to Chunk
+	PodId         PodId
+	Timestamp     time.Time
+	PrevTimestamp time.Time
+
+	mu        sync.RWMutex
+	podChunks map[int32]*chunk
 }
 
 type Drsm struct {
@@ -77,14 +79,21 @@ func (d *Drsm) ConstuctDrsm(opt *Options) {
 		}
 		d.resourceValidCb = opt.ResourceValidCb
 	}
+
 	d.chunkIdRange = 1 << (d.resIdSize - 10)
 	logger.DrsmLog.Debugf("chunkId in the range of 0 to %v", d.chunkIdRange)
+
 	d.localChunkTbl = make(map[int32]*chunk)
 	d.globalChunkTbl = make(map[int32]*chunk)
 	d.podMap = make(map[string]*podData)
-	d.podDown = make(chan string, 10)
 	d.scanChunks = make(map[int32]*chunk)
-	d.globalChunkTblMutex = sync.Mutex{}
+
+	d.podDown = make(chan string, 10)
+
+	// No explicit initialization required, but fine to keep
+	d.globalChunkTblMutex = sync.RWMutex{}
+	d.podMapMutex = sync.RWMutex{}
+
 	d.initIpam(opt)
 
 	// connect to DB

@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/5GC-DEV/util-cdac/logger"
 	"github.com/pkg/errors"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -57,10 +58,17 @@ func NewHttp2Server(bindAddr string, preMasterSecretLogPath string, handler http
 		return nil, errors.New("server needs handler to handle request")
 	}
 
-	h2Server := &http2.Server{
+	/*h2Server := &http2.Server{
 		// TODO: extends the idle time after re-use openapi client
 		IdleTimeout: 1 * time.Millisecond,
+	}*/
+	h2Server := &http2.Server{
+		IdleTimeout: 60 * time.Second,
 	}
+	logger.UtilLog.Infof(
+		"HTTP2 IdleTimeout=%v",
+		h2Server.IdleTimeout,
+	)
 	server := &http.Server{
 		Addr:    bindAddr,
 		Handler: h2c.NewHandler(handler, h2Server),
