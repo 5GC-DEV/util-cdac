@@ -59,7 +59,8 @@ type Drsm struct {
 	ipModule            ipam.Ipamer
 	prefix              map[string]*ipam.Prefix
 	mongo               *MongoDBLibrary.MongoClient
-	globalChunkTblMutex sync.Mutex
+	podMapMutex         sync.RWMutex
+	globalChunkTblMutex sync.RWMutex
 }
 
 func (d *Drsm) DeletePod(podInstance string) {
