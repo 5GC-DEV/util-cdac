@@ -6,8 +6,11 @@ package flowdesc
 
 import (
 	"testing"
+)
 
-	"github.com/stretchr/testify/require"
+const (
+	testSrcCIDR = "192.168.0.0/24"
+	testDstCIDR = "10.60.0.0/16"
 )
 
 func TestBuildIPFilterRuleFromField(t *testing.T) {
@@ -15,8 +18,8 @@ func TestBuildIPFilterRuleFromField(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		configList   IPFilterRuleFieldList
 		ipFilterRule string
+		configList   IPFilterRuleFieldList
 	}{
 		{
 			name:         "default",
@@ -30,7 +33,7 @@ func TestBuildIPFilterRuleFromField(t *testing.T) {
 					Proto: 17,
 				},
 				&IPFilterSourceIP{
-					Src: "192.168.0.0/24",
+					Src: testSrcCIDR,
 				},
 			},
 			ipFilterRule: "permit out 17 from 192.168.0.0/24 to any",
@@ -42,10 +45,10 @@ func TestBuildIPFilterRuleFromField(t *testing.T) {
 					Proto: 17,
 				},
 				&IPFilterSourceIP{
-					Src: "192.168.0.0/24",
+					Src: testSrcCIDR,
 				},
 				&IPFilterDestinationIP{
-					Src: "10.60.0.0/16",
+					Src: testDstCIDR,
 				},
 			},
 			ipFilterRule: "permit out 17 from 192.168.0.0/24 to 10.60.0.0/16",
@@ -57,13 +60,13 @@ func TestBuildIPFilterRuleFromField(t *testing.T) {
 					Proto: 17,
 				},
 				&IPFilterSourceIP{
-					Src: "192.168.0.0/24",
+					Src: testSrcCIDR,
 				},
 				&IPFilterSourcePorts{
 					Ports: "3000",
 				},
 				&IPFilterDestinationIP{
-					Src: "10.60.0.0/16",
+					Src: testDstCIDR,
 				},
 			},
 			ipFilterRule: "permit out 17 from 192.168.0.0/24 3000 to 10.60.0.0/16",
@@ -75,13 +78,13 @@ func TestBuildIPFilterRuleFromField(t *testing.T) {
 					Proto: ProtocolNumberAny,
 				},
 				&IPFilterSourceIP{
-					Src: "192.168.0.0/24",
+					Src: testSrcCIDR,
 				},
 				&IPFilterSourcePorts{
 					Ports: "3000",
 				},
 				&IPFilterDestinationIP{
-					Src: "10.60.0.0/16",
+					Src: testDstCIDR,
 				},
 				&IPFilterDestinationPorts{
 					Ports: "10000,65535",
@@ -94,10 +97,16 @@ func TestBuildIPFilterRuleFromField(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ipFilterRule, err := BuildIPFilterRuleFromField(tc.configList)
-			require.NoError(t, err)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			filterRuleContent, err := Encode(ipFilterRule)
-			require.NoError(t, err)
-			require.Equal(t, tc.ipFilterRule, filterRuleContent)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tc.ipFilterRule != filterRuleContent {
+				t.Fatalf("expected %v, got %v", tc.ipFilterRule, filterRuleContent)
+			}
 		})
 	}
 }

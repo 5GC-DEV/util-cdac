@@ -10,12 +10,41 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/5GC-DEV/util-cdac/logger"
-	"go.mongodb.org/mongo-driver/bson"
+	"github.com/omec-project/util/logger"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
+// GetOwner returns a copy of the pod recorded as owning c. Returning &c.Owner would let the
+// caller read the fields after FindOwnerInt32ID has dropped its lock, while claimChunk and
+// the change-stream handler are still writing them.
 func (c *chunk) GetOwner() *PodId {
-	return &c.Owner
+	c.ownerMutex.Lock()
+	defer c.ownerMutex.Unlock()
+	owner := c.Owner
+	return &owner
+}
+
+// setOwner replaces the recorded owner of c.
+func (c *chunk) setOwner(owner PodId) {
+	c.ownerMutex.Lock()
+	defer c.ownerMutex.Unlock()
+	c.Owner = owner
+}
+
+// setOwnerAddress records this pod as the owner. PodInstance is left as it was, which is what
+// claimChunk has always done - the change-stream update that the claim triggers supplies it.
+func (c *chunk) setOwnerAddress(podName, podIp string) {
+	c.ownerMutex.Lock()
+	defer c.ownerMutex.Unlock()
+	c.Owner.PodName = podName
+	c.Owner.PodIp = podIp
+}
+
+// ownerPodName returns the name of the pod recorded as owning c.
+func (c *chunk) ownerPodName() string {
+	c.ownerMutex.Lock()
+	defer c.ownerMutex.Unlock()
+	return c.Owner.PodName
 }
 
 func (d *Drsm) GetNewChunk() (*chunk, error) {
@@ -40,8 +69,8 @@ func (d *Drsm) GetNewChunk() (*chunk, error) {
 		}
 		// Let's confirm if this gets updated in DB
 		docId := fmt.Sprintf("chunkid-%d", cn)
-		filter := bson.M{"_id": docId}
-		update := bson.M{"_id": docId, "type": "chunk", "chunkId": docId, "podId": d.clientId.PodName, "podInstance": d.clientId.PodInstance, "podIp": d.clientId.PodIp}
+		filter := bson.M{fieldID: docId}
+		update := bson.M{fieldID: docId, fieldType: docTypeChunk, "chunkId": docId, fieldPodID: d.clientId.PodName, fieldPodInstance: d.clientId.PodInstance, fieldPodIP: d.clientId.PodIp}
 		inserted := d.mongo.RestfulAPIPostOnly(d.sharedPoolName, filter, update)
 		if !inserted {
 			logger.DrsmLog.Errorf("Adding chunk %v failed. Retry again", cn)
@@ -53,8 +82,7 @@ func (d *Drsm) GetNewChunk() (*chunk, error) {
 	logger.DrsmLog.Infof("Adding chunk %v success", cn)
 	c := &chunk{Id: cn}
 	c.AllocIds = make(map[int32]bool)
-	var i int32
-	for i = 0; i < 1000; i++ {
+	for i := range int32(1000) {
 		c.FreeIds = append(c.FreeIds, i)
 	}
 	c.State = Owned
@@ -64,6 +92,44 @@ func (d *Drsm) GetNewChunk() (*chunk, error) {
 	// add Ids to freeIds
 	// why we are not adding in global table right away???
 	return c, nil
+}
+
+// appendScanIds seeds the ids still to be scanned. FreeIds, ScanIds and AllocIds are shared
+// with AllocateInt32ID and ReleaseInt32ID, which hold mutex, so the scan goroutine started by
+// claimChunk has to hold it too. The slice is built first so the lock covers only the append.
+func (c *chunk) appendScanIds(n int32) {
+	ids := make([]int32, 0, n)
+	for i := range n {
+		ids = append(ids, i)
+	}
+	mutex.Lock()
+	defer mutex.Unlock()
+	c.ScanIds = append(c.ScanIds, ids...)
+}
+
+// nextScanId takes the next id to scan, reporting false once every id has been scanned.
+func (c *chunk) nextScanId() (int32, bool) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	if len(c.ScanIds) == 0 {
+		return 0, false
+	}
+	id := c.ScanIds[len(c.ScanIds)-1]
+	c.ScanIds = c.ScanIds[:len(c.ScanIds)-1]
+	return id, true
+}
+
+// recordScanResult files a scanned id as free or as already in use. The caller invokes
+// resourceValidCb outside the lock on purpose: it is supplied by the NF and may re-enter
+// drsm, which would deadlock on a non-reentrant mutex.
+func (c *chunk) recordScanResult(id int32, free bool) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	if free {
+		c.FreeIds = append(c.FreeIds, id)
+	} else {
+		c.AllocIds[id] = true // Id is in use
+	}
 }
 
 func (c *chunk) AllocateIntID() (int32, error) {
@@ -103,9 +169,12 @@ func getChunkIdFromDocId(id string) int32 {
 	logger.DrsmLog.Debugf("id received: %v value", id)
 	z := strings.Split(id, "-")
 	if len(z) == 2 && z[0] == "chunkid" {
-		cid, _ := strconv.ParseInt(z[1], 10, 32)
-		c := int32(cid)
-		return c
+		cid, err := strconv.ParseInt(z[1], 10, 32)
+		if err != nil {
+			logger.DrsmLog.Errorf("failed to parse chunk id from doc id %v: %v", id, err)
+			return 0
+		}
+		return int32(cid)
 	}
 	return 0
 }

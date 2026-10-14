@@ -15,16 +15,12 @@ func (c *chunk) scanChunk(d *Drsm) {
 		return
 	}
 
-	if c.Owner.PodName != d.clientId.PodName {
+	if c.ownerPodName() != d.clientId.PodName {
 		logger.DrsmLog.Infoln("do not perform scan task if Chunk is not owned by us")
 		return
 	}
-	c.State = Scanning
-	d.scanChunks[c.Id] = c
-	var i int32
-	for i = 0; i < 1000; i++ {
-		c.ScanIds = append(c.ScanIds, i)
-	}
+	d.startScan(c)
+	c.appendScanIds(1000)
 
 	ticker := time.NewTicker(5000 * time.Millisecond)
 	defer ticker.Stop()
@@ -35,21 +31,13 @@ func (c *chunk) scanChunk(d *Drsm) {
 			// TODO : find candidate and then scan that Id.
 			// once all Ids are scanned then we can start using this block
 			if c.resourceValidCb != nil {
-				if len(c.ScanIds) != 0 {
-					id := c.ScanIds[len(c.ScanIds)-1]
-					c.ScanIds = c.ScanIds[:len(c.ScanIds)-1]
+				if id, ok := c.nextScanId(); ok {
 					rid := c.Id<<10 | id
 					res := c.resourceValidCb(rid)
-					if res {
-						c.FreeIds = append(c.FreeIds, id)
-					} else {
-						c.AllocIds[id] = true // Id is in use
-					}
+					c.recordScanResult(id, res)
 				} else {
 					// mark as owned. and remove from scan list and add to local table
-					c.State = Owned
-					d.localChunkTbl[c.Id] = c
-					delete(d.scanChunks, c.Id)
+					d.completeScan(c)
 					logger.DrsmLog.Debugf("scan complete for Chunk %v", c.Id)
 					return
 				}
@@ -60,4 +48,24 @@ func (c *chunk) scanChunk(d *Drsm) {
 			return
 		}
 	}
+}
+
+// startScan publishes c as being scanned. scanChunks and localChunkTbl are shared with
+// AllocateInt32ID and ReleaseInt32ID, which hold mutex, so the scan goroutines started by
+// claimChunk have to hold it as well.
+func (d *Drsm) startScan(c *chunk) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	c.State = Scanning
+	d.scanChunks[c.Id] = c
+}
+
+// completeScan moves c out of the scan table and into the local table once every id in the
+// chunk has been scanned.
+func (d *Drsm) completeScan(c *chunk) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	c.State = Owned
+	d.localChunkTbl[c.Id] = c
+	delete(d.scanChunks, c.Id)
 }

@@ -4,13 +4,14 @@
 package drsm
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
-	"github.com/5GC-DEV/util-cdac/logger"
-	MongoDBLibrary "github.com/5GC-DEV/util-cdac/mongoapi"
-	ipam "github.com/thakurajayL/go-ipam"
-	"go.mongodb.org/mongo-driver/bson"
+	ipam "github.com/metal-stack/go-ipam"
+	"github.com/omec-project/util/logger"
+	MongoDBLibrary "github.com/omec-project/util/mongoapi"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type chunkState int
@@ -23,52 +24,66 @@ const (
 	Scanning
 )
 
+// bson field names and document type values shared by the chunk/keepalive documents.
+const (
+	fieldID          = "_id"
+	fieldType        = "type"
+	fieldPodID       = "podId"
+	fieldPodIP       = "podIp"
+	fieldPodInstance = "podInstance"
+	docTypeChunk     = "chunk"
+	docTypeKeepalive = "keepalive"
+)
+
 type chunk struct {
-	Id              int32
-	Owner           PodId
-	State           chunkState
-	FreeIds         []int32
 	AllocIds        map[int32]bool
-	ScanIds         []int32
 	stopScan        chan bool
 	resourceValidCb func(int32) bool
+	Owner           PodId
+	FreeIds         []int32
+	ScanIds         []int32
+	State           chunkState
+	ownerMutex      sync.Mutex
+	Id              int32
 }
 
 type podData struct {
-	PodId         PodId
-	Timestamp     time.Time
-	PrevTimestamp time.Time
-
-	mu        sync.RWMutex
-	podChunks map[int32]*chunk
+	Timestamp     time.Time        `bson:"time,omitempty" json:"time,omitempty"`
+	PrevTimestamp time.Time        `bson:"-" json:"-"`
+	podChunks     map[int32]*chunk `bson:"-" json:"-"`
+	PodId         PodId            `bson:"podId,omitempty" json:"podId,omitempty"`
 }
 
 type Drsm struct {
-	sharedPoolName      string
+	scanChunks          map[int32]*chunk
+	podDown             chan string
+	localChunkTbl       map[int32]*chunk
+	globalChunkTbl      map[int32]*chunk
+	podMap              map[string]*podData
+	resourceValidCb     func(int32) bool
+	mongo               *MongoDBLibrary.MongoClient
 	clientId            PodId
 	db                  DbInfo
+	sharedPoolName      string
 	mode                DrsmMode
+	globalChunkTblMutex sync.Mutex
+	podMapMutex         sync.Mutex
 	resIdSize           int32
-	localChunkTbl       map[int32]*chunk    // chunkid to chunk
-	globalChunkTbl      map[int32]*chunk    // chunkid to chunk
-	podMap              map[string]*podData // podId to podData
-	podDown             chan string
-	scanChunks          map[int32]*chunk
 	chunkIdRange        int32
-	resourceValidCb     func(int32) bool
 	ipModule            ipam.Ipamer
 	prefix              map[string]*ipam.Prefix
-	mongo               *MongoDBLibrary.MongoClient
-	globalChunkTblMutex sync.Mutex
 }
 
 func (d *Drsm) DeletePod(podInstance string) {
-	filter := bson.M{"type": "keepalive", "podInstance": podInstance}
-	d.mongo.RestfulAPIDeleteMany(d.sharedPoolName, filter)
+	filter := bson.M{fieldType: docTypeKeepalive, fieldPodInstance: podInstance}
+	if err := d.mongo.RestfulAPIDeleteMany(d.sharedPoolName, filter); err != nil {
+		logger.DrsmLog.Errorf("failed to delete PodId from DB: %v, err: %v", podInstance, err)
+		return
+	}
 	logger.DrsmLog.Infoln("deleted PodId from DB:", podInstance)
 }
 
-func (d *Drsm) ConstuctDrsm(opt *Options) {
+func (d *Drsm) ConstuctDrsm(opt *Options) error {
 	if opt != nil {
 		d.mode = opt.Mode
 		logger.DrsmLog.Debugln("drsm mode set to", d.mode)
@@ -87,21 +102,33 @@ func (d *Drsm) ConstuctDrsm(opt *Options) {
 	d.globalChunkTbl = make(map[int32]*chunk)
 	d.podMap = make(map[string]*podData)
 	d.scanChunks = make(map[int32]*chunk)
+	d.globalChunkTblMutex = sync.Mutex{}
 
-	d.podDown = make(chan string, 10)
-
-	// No explicit initialization required, but fine to keep
-	d.globalChunkTblMutex = sync.RWMutex{}
-	d.podMapMutex = sync.RWMutex{}
-
-	d.initIpam(opt)
-
-	// connect to DB
-	d.mongo, _ = MongoDBLibrary.NewMongoClient(d.db.Url, d.db.Name)
+	// connect to DB — retry until MongoDB is reachable so that the goroutines
+	// spawned below are never handed a nil client.
+	const (
+		retryInterval = 2 * time.Second
+		maxWait       = 120 * time.Second
+	)
+	deadline := time.Now().Add(maxWait)
+	for {
+		var err error
+		d.mongo, err = MongoDBLibrary.NewMongoClient(d.db.Url, d.db.Name)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			logger.DrsmLog.Errorf("drsm: mongodb not reachable after %v; goroutines will not be started", maxWait)
+			return fmt.Errorf("drsm: mongodb not reachable after %v", maxWait)
+		}
+		logger.DrsmLog.Warnf("drsm: waiting for mongodb, retrying in %v", retryInterval)
+		time.Sleep(retryInterval)
+	}
 	logger.DrsmLog.Debugln("mongoClient is created", d.db.Name)
 
 	go d.handleDbUpdates()
 	go d.punchLiveness()
 	go d.podDownDetected()
 	go d.checkAllChunks()
+	return nil
 }

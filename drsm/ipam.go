@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/5GC-DEV/util-cdac/logger"
-	ipam "github.com/thakurajayL/go-ipam"
+	ipam "github.com/metal-stack/go-ipam"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -30,7 +30,7 @@ func (d *Drsm) initIpam(opt *Options) {
 	d.prefix = make(map[string]*ipam.Prefix)
 
 	for k, v := range opt.IpPool {
-		prefix, err := ipModule.NewPrefix(context.TODO(), v)
+		prefix, err := ipModule.NewPrefix(v)
 		if err != nil {
 			panic(err)
 		}
@@ -40,7 +40,7 @@ func (d *Drsm) initIpam(opt *Options) {
 }
 
 func (d *Drsm) initIpPool(name string, prefix string) error {
-	p, err := d.ipModule.NewPrefix(context.TODO(), prefix)
+	p, err := d.ipModule.NewPrefix(prefix)
 	if err != nil {
 		return err
 	}
@@ -54,7 +54,7 @@ func (d *Drsm) deleteIpPool(name string) error {
 		err := fmt.Errorf("failed to find pool %s", name)
 		return err
 	}
-	_, err := d.ipModule.DeletePrefix(context.TODO(), p.Cidr)
+	_, err := d.ipModule.DeletePrefix(p.Cidr)
 	return err
 }
 
@@ -65,7 +65,7 @@ func (d *Drsm) acquireIp(name string) (string, error) {
 		return "", err
 	}
 
-	ip, err := d.ipModule.AcquireIP(context.TODO(), prefix.Cidr)
+	ip, err := d.ipModule.AcquireIP(prefix.Cidr)
 	if err != nil {
 		err := fmt.Errorf("no address")
 		return "", err
@@ -81,7 +81,7 @@ func (d *Drsm) releaseIp(name, ip string) error {
 		return err
 	}
 
-	err := d.ipModule.ReleaseIPFromPrefix(context.TODO(), prefix.Cidr, ip)
+	err := d.ipModule.ReleaseIPFromPrefix(prefix.Cidr, ip)
 	if err != nil {
 		logger.DrsmLog.Debugln("release IP failed - ", ip)
 		err := fmt.Errorf("no address")

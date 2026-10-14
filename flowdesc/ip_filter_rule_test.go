@@ -6,9 +6,11 @@ package flowdesc
 
 import (
 	"testing"
+)
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+const (
+	testIP100 = "60.60.0.100"
+	testIP1   = "60.60.0.1"
 )
 
 func TestIPFilterRuleEncode(t *testing.T) {
@@ -20,32 +22,32 @@ func TestIPFilterRuleEncode(t *testing.T) {
 	}
 
 	if err := rule.SetAction(Permit); err != nil {
-		assert.Nil(t, err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if err := rule.SetDirection(Out); err != nil {
-		assert.Nil(t, err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if err := rule.SetProtocol(0xfc); err != nil {
-		assert.Nil(t, err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if err := rule.SetSourceIP("any"); err != nil {
-		assert.Nil(t, err)
+	if err := rule.SetSourceIP(ipAny); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if err := rule.SetDestinationIP("assigned"); err != nil {
-		assert.Nil(t, err)
+	if err := rule.SetDestinationIP(ipAssigned); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if err := rule.SetDestinationPorts("655"); err != nil {
-		assert.Nil(t, err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	result, err := Encode(rule)
 	if err != nil {
-		assert.Nil(t, err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 	if result != testStr1 {
 		t.Fatalf("Encode error, \n\t expect: %s,\n\t    get: %s", testStr1, result)
@@ -57,20 +59,20 @@ func TestIPFilterRuleDecode(t *testing.T) {
 		filterRule string
 		action     Action
 		dir        Direction
-		proto      uint8
 		src        string
 		srcPorts   string
 		dst        string
 		dstPorts   string
+		proto      uint8
 	}{
 		"fully": {
 			filterRule: "permit out ip from 60.60.0.100 8080 to 60.60.0.1 80",
 			action:     Permit,
 			dir:        Out,
 			proto:      ProtocolNumberAny,
-			src:        "60.60.0.100",
+			src:        testIP100,
 			srcPorts:   "8080",
-			dst:        "60.60.0.1",
+			dst:        testIP1,
 			dstPorts:   "80",
 		},
 		"withoutPorts": {
@@ -78,9 +80,9 @@ func TestIPFilterRuleDecode(t *testing.T) {
 			action:     Permit,
 			dir:        Out,
 			proto:      ProtocolNumberAny,
-			src:        "60.60.0.100",
+			src:        testIP100,
 			srcPorts:   "",
-			dst:        "60.60.0.1",
+			dst:        testIP1,
 			dstPorts:   "",
 		},
 		"withoutOnePorts": {
@@ -88,9 +90,9 @@ func TestIPFilterRuleDecode(t *testing.T) {
 			action:     Permit,
 			dir:        Out,
 			proto:      ProtocolNumberAny,
-			src:        "60.60.0.100",
+			src:        testIP100,
 			srcPorts:   "8080",
-			dst:        "60.60.0.1",
+			dst:        testIP1,
 			dstPorts:   "",
 		},
 		"withSrcAny": {
@@ -98,9 +100,9 @@ func TestIPFilterRuleDecode(t *testing.T) {
 			action:     Permit,
 			dir:        Out,
 			proto:      ProtocolNumberAny,
-			src:        "any",
+			src:        ipAny,
 			srcPorts:   "",
-			dst:        "60.60.0.1",
+			dst:        testIP1,
 			dstPorts:   "8080",
 		},
 		"withDstAny": {
@@ -108,9 +110,9 @@ func TestIPFilterRuleDecode(t *testing.T) {
 			action:     Permit,
 			dir:        Out,
 			proto:      ProtocolNumberAny,
-			src:        "60.60.0.1",
+			src:        testIP1,
 			srcPorts:   "8080",
-			dst:        "any",
+			dst:        ipAny,
 			dstPorts:   "",
 		},
 		"withAssigned": {
@@ -118,9 +120,9 @@ func TestIPFilterRuleDecode(t *testing.T) {
 			action:     Permit,
 			dir:        Out,
 			proto:      ProtocolNumberAny,
-			src:        "assigned",
+			src:        ipAssigned,
 			srcPorts:   "",
-			dst:        "60.60.0.1",
+			dst:        testIP1,
 			dstPorts:   "8080",
 		},
 	}
@@ -128,16 +130,30 @@ func TestIPFilterRuleDecode(t *testing.T) {
 	for testName, expected := range testCases {
 		t.Run(testName, func(t *testing.T) {
 			r, err := Decode(expected.filterRule)
-
-			require.Equal(t, expected.action, r.GetAction())
-			require.Equal(t, expected.dir, r.GetDirection())
-			require.Equal(t, expected.proto, r.GetProtocol())
-			require.Equal(t, expected.src, r.GetSourceIP())
-			require.Equal(t, expected.srcPorts, r.GetSourcePorts())
-			require.Equal(t, expected.dst, r.GetDestinationIP())
-			require.Equal(t, expected.dstPorts, r.GetDestinationPorts())
-
-			require.NoError(t, err)
+			if expected.action != r.GetAction() {
+				t.Fatalf("expected action %v, got %v", expected.action, r.GetAction())
+			}
+			if expected.dir != r.GetDirection() {
+				t.Fatalf("expected direction %v, got %v", expected.dir, r.GetDirection())
+			}
+			if expected.proto != r.GetProtocol() {
+				t.Fatalf("expected protocol %v, got %v", expected.proto, r.GetProtocol())
+			}
+			if expected.src != r.GetSourceIP() {
+				t.Fatalf("expected source IP %v, got %v", expected.src, r.GetSourceIP())
+			}
+			if expected.srcPorts != r.GetSourcePorts() {
+				t.Fatalf("expected source ports %v, got %v", expected.srcPorts, r.GetSourcePorts())
+			}
+			if expected.dst != r.GetDestinationIP() {
+				t.Fatalf("expected destination IP %v, got %v", expected.dst, r.GetDestinationIP())
+			}
+			if expected.dstPorts != r.GetDestinationPorts() {
+				t.Fatalf("expected destination ports %v, got %v", expected.dstPorts, r.GetDestinationPorts())
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 		})
 	}
 }
@@ -147,20 +163,20 @@ func TestIPFilterRuleSwapSourceAndDestination(t *testing.T) {
 		filterRule string
 		action     Action
 		dir        Direction
-		proto      uint8
 		src        string
 		srcPorts   string
 		dst        string
 		dstPorts   string
+		proto      uint8
 	}{
 		"fully": {
 			filterRule: "permit out ip from 60.60.0.100 8080 to 60.60.0.1 80",
 			action:     Permit,
 			dir:        Out,
 			proto:      ProtocolNumberAny,
-			src:        "60.60.0.1",
+			src:        testIP1,
 			srcPorts:   "80",
-			dst:        "60.60.0.100",
+			dst:        testIP100,
 			dstPorts:   "8080",
 		},
 		"withoutPorts": {
@@ -168,9 +184,9 @@ func TestIPFilterRuleSwapSourceAndDestination(t *testing.T) {
 			action:     Permit,
 			dir:        Out,
 			proto:      ProtocolNumberAny,
-			src:        "60.60.0.1",
+			src:        testIP1,
 			srcPorts:   "",
-			dst:        "60.60.0.100",
+			dst:        testIP100,
 			dstPorts:   "",
 		},
 		"withoutOnePorts": {
@@ -178,9 +194,9 @@ func TestIPFilterRuleSwapSourceAndDestination(t *testing.T) {
 			action:     Permit,
 			dir:        Out,
 			proto:      ProtocolNumberAny,
-			src:        "60.60.0.1",
+			src:        testIP1,
 			srcPorts:   "",
-			dst:        "60.60.0.100",
+			dst:        testIP100,
 			dstPorts:   "8080",
 		},
 		"withSrcAny": {
@@ -188,9 +204,9 @@ func TestIPFilterRuleSwapSourceAndDestination(t *testing.T) {
 			action:     Permit,
 			dir:        Out,
 			proto:      ProtocolNumberAny,
-			src:        "60.60.0.1",
+			src:        testIP1,
 			srcPorts:   "8080",
-			dst:        "any",
+			dst:        ipAny,
 			dstPorts:   "",
 		},
 		"withDstAny": {
@@ -198,9 +214,9 @@ func TestIPFilterRuleSwapSourceAndDestination(t *testing.T) {
 			action:     Permit,
 			dir:        Out,
 			proto:      ProtocolNumberAny,
-			src:        "any",
+			src:        ipAny,
 			srcPorts:   "",
-			dst:        "60.60.0.1",
+			dst:        testIP1,
 			dstPorts:   "8080",
 		},
 		"withAssigned": {
@@ -208,9 +224,9 @@ func TestIPFilterRuleSwapSourceAndDestination(t *testing.T) {
 			action:     Permit,
 			dir:        Out,
 			proto:      ProtocolNumberAny,
-			src:        "60.60.0.1",
+			src:        testIP1,
 			srcPorts:   "8080",
-			dst:        "assigned",
+			dst:        ipAssigned,
 			dstPorts:   "",
 		},
 	}
@@ -219,15 +235,30 @@ func TestIPFilterRuleSwapSourceAndDestination(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			r, err := Decode(expected.filterRule)
 			r.SwapSourceAndDestination()
-			require.Equal(t, expected.action, r.GetAction())
-			require.Equal(t, expected.dir, r.GetDirection())
-			require.Equal(t, expected.proto, r.GetProtocol())
-			require.Equal(t, expected.src, r.GetSourceIP())
-			require.Equal(t, expected.srcPorts, r.GetSourcePorts())
-			require.Equal(t, expected.dst, r.GetDestinationIP())
-			require.Equal(t, expected.dstPorts, r.GetDestinationPorts())
-
-			require.NoError(t, err)
+			if expected.action != r.GetAction() {
+				t.Fatalf("expected action %v, got %v", expected.action, r.GetAction())
+			}
+			if expected.dir != r.GetDirection() {
+				t.Fatalf("expected direction %v, got %v", expected.dir, r.GetDirection())
+			}
+			if expected.proto != r.GetProtocol() {
+				t.Fatalf("expected protocol %v, got %v", expected.proto, r.GetProtocol())
+			}
+			if expected.src != r.GetSourceIP() {
+				t.Fatalf("expected source IP %v, got %v", expected.src, r.GetSourceIP())
+			}
+			if expected.srcPorts != r.GetSourcePorts() {
+				t.Fatalf("expected source ports %v, got %v", expected.srcPorts, r.GetSourcePorts())
+			}
+			if expected.dst != r.GetDestinationIP() {
+				t.Fatalf("expected destination IP %v, got %v", expected.dst, r.GetDestinationIP())
+			}
+			if expected.dstPorts != r.GetDestinationPorts() {
+				t.Fatalf("expected destination ports %v, got %v", expected.dstPorts, r.GetDestinationPorts())
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 		})
 	}
 }
